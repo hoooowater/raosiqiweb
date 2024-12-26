@@ -43,7 +43,7 @@ if url:
     clean_text = re.sub(r'[^\w\s]', '', re.sub('<[^>]+>', '', content))
 
     # 加载停用词
-    stopwords_file = r'E:\Python实训\stopwords.txt'  # 停用词文件路径
+    stopwords_file = 'stopwords.txt'  # 停用词文件路径
     stopwords = load_stopwords(stopwords_file)
 
     # 分词并过滤
