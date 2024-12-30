@@ -1,14 +1,21 @@
-import streamlit as st
+
 import requests
 from bs4 import BeautifulSoup
 import re
 import jieba
 from collections import Counter
+
+import streamlit as st
+
 from pyecharts.charts import WordCloud, Line, Bar, Pie
 from pyecharts import options as opts
 import seaborn as sns
 import matplotlib.pyplot as plt
 import pandas as pd
+import plotly.express as px
+import altair as alt
+import pygal
+
 
 # 加载自定义停用词表
 def load_stopwords(file_path):
@@ -16,11 +23,13 @@ def load_stopwords(file_path):
         stopwords = set(line.strip() for line in f)
     return stopwords
 
+
 # 分词并去除停用词
 def segment(text, stopwords):
     words = list(jieba.cut(text, cut_all=False))
     filtered_words = [word for word in words if word not in stopwords and word.strip()]
     return filtered_words
+
 
 # 创建不同类型的图表
 def create_line_chart(word_freq):
@@ -32,6 +41,7 @@ def create_line_chart(word_freq):
     )
     return line
 
+
 def create_bar_chart(word_freq):
     bar = (
         Bar()
@@ -41,6 +51,7 @@ def create_bar_chart(word_freq):
     )
     return bar
 
+
 def create_pie_chart(word_freq):
     pie = (
         Pie()
@@ -49,7 +60,6 @@ def create_pie_chart(word_freq):
         .set_series_opts(label_opts=opts.LabelOpts(formatter="{b}: {c} ({d}%)"))
     )
     return pie
-
 
 
 def create_word_cloud(shape, word_freq):
@@ -63,24 +73,76 @@ def create_word_cloud(shape, word_freq):
     )
     return word_cloud
 
+
 # 创建 Seaborn 统计图表
 def create_seaborn_regplot(df):
     plt.figure(figsize=(10, 6))
     sns.regplot(x="length", y="frequency", data=df)
-
     st.pyplot(plt)
+
 
 def create_seaborn_distplot(df):
     plt.figure(figsize=(10, 6))
     sns.histplot(df["frequency"], kde=True)
-
     st.pyplot(plt)
+
 
 def create_seaborn_pairplot(df):
     plt.figure(figsize=(10, 8))
     sns.pairplot(df, vars=["length", "frequency"])
-
     st.pyplot(plt)
+
+
+# 创建 Plotly 图表
+def create_plotly_bar_chart(word_freq):
+    df = pd.DataFrame(word_freq, columns=['word', 'frequency'])
+    fig = px.bar(df, x='word', y='frequency', title="词汇频率条形图")
+    return fig
+
+
+def create_plotly_pie_chart(word_freq):
+    df = pd.DataFrame(word_freq, columns=['word', 'frequency'])
+    fig = px.pie(df, names='word', values='frequency', title="词汇频率饼图")
+    return fig
+
+
+# 创建 Altair 图表
+def create_altair_bar_chart(word_freq):
+    df = pd.DataFrame(word_freq, columns=['word', 'frequency'])
+    chart = alt.Chart(df).mark_bar().encode(
+        x=alt.X('word:N', sort='-y'),
+        y='frequency:Q',
+        tooltip=['word', 'frequency']
+    ).properties(title="词汇频率条形图").interactive()
+    return chart
+
+
+def create_altair_scatter_chart(df_word_freq):
+    chart = alt.Chart(df_word_freq).mark_circle(size=60).encode(
+        x='length',
+        y='frequency',
+        color='word',
+        tooltip=['word', 'frequency', 'length']
+    ).properties(width=600, height=400, title="词汇长度与频率散点图").interactive()
+    return chart
+
+
+# 创建 Pygal 图表
+
+def create_pygal_bar_chart(word_freq):
+    bar_chart = pygal.Bar()
+    bar_chart.title = "词汇频率条形图"
+    bar_chart.x_labels = [word for word, freq in word_freq]
+    bar_chart.add('频率', [freq for word, freq in word_freq])
+    return bar_chart.render_data_uri()
+
+def create_pygal_pie_chart(word_freq):
+    pie_chart = pygal.Pie()
+    pie_chart.title = "词汇频率饼图"
+    for word, freq in word_freq:
+        pie_chart.add(word, freq)
+    return pie_chart.render_data_uri()
+
 
 # 设置页面标题
 st.title("文本分析工具")
@@ -141,8 +203,16 @@ if url:
     df_word_freq_to_show.index = df_word_freq_to_show.index + 1
 
     # 侧边栏中选择图表类型
-    chart_types = ["词云图", "折线图", "柱状图", "饼图",  "回归图", "直方图", "成对关系图"]
-    selected_chart_type = st.sidebar.selectbox("选择图表类型:", chart_types)
+    chart_categories = {
+        "PyEcharts": ["词云图", "折线图", "柱状图", "饼图"],
+        "Plotly": ["Plotly 条形图", "Plotly 饼图"],
+        "Altair": ["Altair 条形图", "Altair 散点图"],
+        "Seaborn": ["回归图", "直方图", "成对关系图"],
+        "Pygal": ["Pygal 条形图", "Pygal 饼图"]
+    }
+
+    selected_category = st.sidebar.selectbox("选择图表库:", list(chart_categories.keys()))
+    selected_chart_type = st.sidebar.selectbox("选择图表类型:", chart_categories[selected_category])
 
     # 显示表格选项
     show_table = st.sidebar.checkbox("显示词频表格")
@@ -151,26 +221,57 @@ if url:
     show_dynamic_line_chart = st.sidebar.checkbox("显示动态线图")
 
     # 根据选择创建对应的图表
-    if selected_chart_type == "词云图":
-        shapes = ["circle", "square", "diamond", "triangle-up", "triangle-down", "pin", "star"]
-        selected_shape = st.sidebar.radio("词云图形状:", shapes)
-        chart = create_word_cloud(selected_shape, word_freq_to_show)
-    elif selected_chart_type == "折线图":
-        chart = create_line_chart(word_freq_to_show)
-    elif selected_chart_type == "柱状图":
-        chart = create_bar_chart(word_freq_to_show)
-    elif selected_chart_type == "饼图":
-        chart = create_pie_chart(word_freq_to_show)
-    elif selected_chart_type == "回归图":
-        create_seaborn_regplot(df_word_freq_to_show)
-    elif selected_chart_type == "直方图":
-        create_seaborn_distplot(df_word_freq_to_show)
-    elif selected_chart_type == "成对关系图":
-        create_seaborn_pairplot(df_word_freq_to_show)
-
-    # 如果不是Seaborn图表，则渲染pyecharts图表
-    if selected_chart_type not in ["回归图", "直方图", "成对关系图"]:
+    if selected_category == "PyEcharts":
+        if selected_chart_type == "词云图":
+            shapes = ["circle", "square", "diamond", "triangle-up", "triangle-down", "pin", "star"]
+            selected_shape = st.sidebar.radio("词云图形状:", shapes)
+            chart = create_word_cloud(selected_shape, word_freq_to_show)
+        elif selected_chart_type == "折线图":
+            chart = create_line_chart(word_freq_to_show)
+        elif selected_chart_type == "柱状图":
+            chart = create_bar_chart(word_freq_to_show)
+        elif selected_chart_type == "饼图":
+            chart = create_pie_chart(word_freq_to_show)
         st.components.v1.html(chart.render_embed(), height=600)
+
+    elif selected_category == "Plotly":
+        if selected_chart_type == "Plotly 条形图":
+            chart = create_plotly_bar_chart(word_freq_to_show)
+            st.plotly_chart(chart)
+        elif selected_chart_type == "Plotly 饼图":
+            chart = create_plotly_pie_chart(word_freq_to_show)
+            st.plotly_chart(chart)
+
+    elif selected_category == "Altair":
+        if selected_chart_type == "Altair 条形图":
+            chart = create_altair_bar_chart(word_freq_to_show)
+            st.altair_chart(chart, use_container_width=True)
+        elif selected_chart_type == "Altair 散点图":
+            chart = create_altair_scatter_chart(df_word_freq_to_show)
+            st.altair_chart(chart, use_container_width=True)
+
+    elif selected_category == "Seaborn":
+        if selected_chart_type == "回归图":
+            create_seaborn_regplot(df_word_freq_to_show)
+        elif selected_chart_type == "直方图":
+            create_seaborn_distplot(df_word_freq_to_show)
+        elif selected_chart_type == "成对关系图":
+            create_seaborn_pairplot(df_word_freq_to_show)
+
+
+    elif selected_category == "Pygal":
+
+        if selected_chart_type == "Pygal 条形图":
+
+            chart_svg = create_pygal_bar_chart(word_freq_to_show)
+
+            st.markdown(f'<img src="{chart_svg}">', unsafe_allow_html=True)
+
+        elif selected_chart_type == "Pygal 饼图":
+
+            chart_svg = create_pygal_pie_chart(word_freq_to_show)
+
+            st.markdown(f'<img src="{chart_svg}">', unsafe_allow_html=True)
 
     # 输出前20个出现最多的单词及其次数
     if show_top_only:
